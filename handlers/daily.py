@@ -1,0 +1,153 @@
+"""
+Обработчики ежедневного цикла:
+- Утро: пользователь выбирает тип шага
+- Вечер: пользователь отмечает выполнение
+"""
+
+from aiogram import Router, F
+from aiogram.types import CallbackQuery
+
+from database import (
+    get_user,
+    save_daily_plan,
+    get_today_plan,
+    update_step_status,
+    mark_step_done,
+    mark_step_failed,
+)
+import texts
+
+router = Router()
+
+
+# ============ УТРО: ВЫБОР ТИПА ШАГА ============
+
+@router.callback_query(F.data.startswith("step:"))
+async def process_step_choice(callback: CallbackQuery) -> None:
+    """Пользователь выбрал тип шага утром."""
+    step_type = callback.data.split(":", 1)[1]
+    user_id = callback.from_user.id
+
+    user = await get_user(user_id)
+    if not user or not user.get("skill"):
+        await callback.answer("Сначала выбери навык через /start", show_alert=True)
+        return
+
+    # Сохраняем план на сегодня
+    await save_daily_plan(user_id, step_type)
+
+    await callback.message.edit_text(
+        texts.MORNING_CONFIRMED.format(
+            step_type=step_type,
+            skill=user["skill"]
+        )
+    )
+    await callback.answer()
+
+
+# ============ ВЕЧЕР: ОТВЕТЫ НА ЧЕКАП ============
+
+@router.callback_query(F.data == "evening:done")
+async def process_evening_done(callback: CallbackQuery) -> None:
+    """Пользователь отметил, что сделал шаг."""
+    user_id = callback.from_user.id
+
+    # Отмечаем шаг выполненным
+    await update_step_status(user_id, "выполнен")
+
+    # Обновляем серию и получаем новые данные
+    user = await mark_step_done(user_id)
+
+    streak = user.get("streak", 0)
+    total = user.get("total_success", 0)
+
+    # Если серия кратна 5 — добавляем поздравление
+    if streak > 0 and streak % 5 == 0:
+        text = texts.STEP_DONE_STREAK_BONUS.format(streak=streak, total=total)
+    else:
+        text = texts.STEP_DONE.format(streak=streak, total=total)
+
+    await callback.message.edit_text(text)
+    await callback.answer()
+
+
+@router.callback_query(F.data == "evening:failed")
+async def process_evening_failed(callback: CallbackQuery) -> None:
+    """Пользователь отметил, что не успел."""
+    user_id = callback.from_user.id
+
+    # Сохраняем статус
+    await update_step_status(user_id, "пропущен")
+
+    # Запоминаем текущую серию, чтобы показать в сообщении
+    old_user = await get_user(user_id)
+    old_streak = old_user.get("streak", 0) if old_user else 0
+
+    # Сбрасываем серию
+    await mark_step_failed(user_id)
+
+    await callback.message.edit_text(
+        texts.STEP_FAILED.format(streak=old_streak)
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data == "evening:postponed")
+async def process_evening_postponed(callback: CallbackQuery) -> None:
+    """Пользователь переносит шаг на завтра."""
+    user_id = callback.from_user.id
+
+    # Сохраняем статус
+    await update_step_status(user_id, "перенесён")
+
+    user = await get_user(user_id)
+    streak = user.get("streak", 0) if user else 0
+
+    await callback.message.edit_text(
+        texts.STEP_POSTPONED.format(streak=streak)
+    )
+    await callback.answer()
+
+
+# ============ ВЕЧЕР: ЕСЛИ ПЛАНА НЕ БЫЛО ============
+
+@router.callback_query(F.data == "noplan:now")
+async def process_noplan_now(callback: CallbackQuery) -> None:
+    """Пользователь решил сделать шаг сейчас (после того, как не выбрал утром)."""
+    user_id = callback.from_user.id
+
+    user = await get_user(user_id)
+    if not user or not user.get("skill"):
+        await callback.answer("Сначала выбери навык через /start", show_alert=True)
+        return
+
+    # Считаем это выполненным
+    await mark_step_done(user_id)
+
+    user = await get_user(user_id)
+    streak = user.get("streak", 0)
+    total = user.get("total_success", 0)
+
+    await callback.message.edit_text(
+        texts.STEP_DONE.format(streak=streak, total=total)
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data == "noplan:postponed")
+async def process_noplan_postponed(callback: CallbackQuery) -> None:
+    """Пользователь переносит на завтра (без плана)."""
+    user = await get_user(callback.from_user.id)
+    streak = user.get("streak", 0) if user else 0
+
+    await callback.message.edit_text(
+        texts.STEP_POSTPONED.format(streak=streak)
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data == "noplan:skip")
+async def process_noplan_skip(callback: CallbackQuery) -> None:
+    """Пользователь пропускает день."""
+    await callback.message.edit_text(texts.STEP_SKIPPED)
+    await callback.answer()
