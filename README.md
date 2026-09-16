@@ -30,15 +30,19 @@ Telegram-бот **@SkillUpCoachBot** — коуч для профессиона�
 - **CI/CD:** GitHub
 
 ## Структура проекта
+
+```
 habit_coach_bot/
-├── docs/ # Продуктовые документы
-├── handlers/ # Обработчики команд и сообщений
-├── main.py # Точка входа
-├── database.py # Работа с SQLite
-├── keyboards.py # Кнопки
-├── texts.py # Тексты бота
-├── scheduler.py # Планировщик
-└── requirements.txt # Зависимости
+├── docs/             # Продуктовые документы
+├── handlers/         # Обработчики команд
+├── main.py           # Точка входа
+├── database.py       # Работа с SQLite
+├── keyboards.py      # Кнопки
+├── texts.py          # Тексты бота
+├── scheduler.py      # Планировщик
+└── requirements.txt  # Зависимости
+```
+
 ## Документация
 
 - [Гипотеза](docs/problem_hypothesis.md)
