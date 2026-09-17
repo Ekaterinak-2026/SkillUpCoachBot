@@ -14,11 +14,13 @@ from database import (
     get_user,
     update_user_skill,
     update_user_time,
+    update_user_timezone,
 )
 from keyboards import (
     skills_keyboard,
     time_setup_keyboard,
     start_choice_keyboard,
+    timezone_keyboard,
 )
 import texts
 
@@ -29,13 +31,11 @@ router = Router()
 # ============ СОСТОЯНИЯ (FSM) ============
 
 class Onboarding(StatesGroup):
-    """Состояния онбординга — бот помнит, на каком шаге пользователь."""
-    choosing_skill = State()       # выбор навыка
-    entering_custom_skill = State()  # ввод своего навыка
-    setting_morning = State()       # настройка утреннего времени
-    setting_evening = State()       # настройка вечернего времени
-
-
+    choosing_skill = State()
+    entering_custom_skill = State()
+    choosing_timezone = State()
+    setting_morning = State()
+    setting_evening = State()
 # ============ /start ============
 
 @router.message(CommandStart())
@@ -73,6 +73,35 @@ async def cmd_start(message: Message, state: FSMContext) -> None:
 
 
 # ============ ВЫБОР НАВЫКА ============
+@router.callback_query(F.data.startswith("tz:"), Onboarding.choosing_timezone)
+async def process_timezone_choice(callback: CallbackQuery, state: FSMContext) -> None:
+    """Пользователь выбрал часовой пояс."""
+    tz_name = callback.data.split(":", 1)[1]
+
+    # Красивое название для сообщения
+    tz_labels = {
+        "Europe/Kaliningrad": "Калининград (UTC+2)",
+        "Europe/Moscow": "Москва (UTC+3)",
+        "Europe/Samara": "Самара (UTC+4)",
+        "Asia/Yekaterinburg": "Екатеринбург (UTC+5)",
+        "Asia/Omsk": "Омск (UTC+6)",
+        "Asia/Novosibirsk": "Новосибирск (UTC+7)",
+        "Asia/Irkutsk": "Иркутск (UTC+8)",
+        "Asia/Yakutsk": "Якутск (UTC+9)",
+        "Asia/Vladivostok": "Владивосток (UTC+10)",
+        "Asia/Magadan": "Магадан (UTC+11)",
+        "Asia/Kamchatka": "Камчатка (UTC+12)",
+    }
+    tz_label = tz_labels.get(tz_name, tz_name)
+
+    await state.update_data(timezone=tz_name)
+    await callback.message.edit_text(
+        texts.TIMEZONE_SAVED.format(timezone_name=tz_label) + "\n\n" + texts.SET_TIME_PROMPT,
+        reply_markup=time_setup_keyboard()
+    )
+    # НЕ меняем состояние — оставляем choosing_timezone, чтобы
+    # пользователь мог нажать «Оставить по умолчанию» или «Настроить»
+    await callback.answer()
 
 @router.callback_query(F.data.startswith("skill:"), Onboarding.choosing_skill)
 async def process_skill_choice(callback: CallbackQuery, state: FSMContext) -> None:
@@ -86,12 +115,14 @@ async def process_skill_choice(callback: CallbackQuery, state: FSMContext) -> No
         await callback.answer()
         return
 
-    # Сохраняем навык
+
+        # Сохраняем навык
     await state.update_data(skill=skill)
     await callback.message.edit_text(
-        texts.SKILL_SAVED.format(skill=skill) + "\n\n" + texts.SET_TIME_PROMPT,
-        reply_markup=time_setup_keyboard()
+        texts.SKILL_SAVED.format(skill=skill) + "\n\n" + texts.CHOOSE_TIMEZONE,
+        reply_markup=timezone_keyboard()
     )
+    await state.set_state(Onboarding.choosing_timezone)
     await callback.answer()
 
 
@@ -104,25 +135,26 @@ async def process_custom_skill(message: Message, state: FSMContext) -> None:
         await message.answer("Напиши название навыка.")
         return
 
-    await state.update_data(skill=skill)
+        await state.update_data(skill=skill)
     await message.answer(
-        texts.SKILL_SAVED.format(skill=skill) + "\n\n" + texts.SET_TIME_PROMPT,
-        reply_markup=time_setup_keyboard()
+        texts.SKILL_SAVED.format(skill=skill) + "\n\n" + texts.CHOOSE_TIMEZONE,
+        reply_markup=timezone_keyboard()
     )
-    # ← Добавляем переключение в состояние выбора времени
-    await state.set_state(Onboarding.choosing_skill)
+    await state.set_state(Onboarding.choosing_timezone)
 
 
 # ============ НАСТРОЙКА ВРЕМЕНИ ============
 
-@router.callback_query(F.data == "time:default", Onboarding.choosing_skill)
+@router.callback_query(F.data == "time:default", Onboarding.choosing_timezone)
 async def process_default_time(callback: CallbackQuery, state: FSMContext) -> None:
     """Оставляем время по умолчанию: 9:00 и 20:00."""
     data = await state.get_data()
     skill = data.get("skill")
+    timezone = data.get("timezone", "Europe/Moscow")
 
     user_id = callback.from_user.id
     await update_user_skill(user_id, skill)
+    await update_user_timezone(user_id, timezone)
     await update_user_time(user_id, morning="09:00", evening="20:00")
 
     await callback.message.edit_text(
@@ -135,8 +167,7 @@ async def process_default_time(callback: CallbackQuery, state: FSMContext) -> No
     await state.clear()
     await callback.answer()
 
-
-@router.callback_query(F.data == "time:custom", Onboarding.choosing_skill)
+@router.callback_query(F.data == "time:custom", Onboarding.choosing_timezone)
 async def process_custom_time(callback: CallbackQuery, state: FSMContext) -> None:
     """Пользователь хочет настроить своё время."""
     await callback.message.edit_text(texts.ASK_MORNING_TIME)
