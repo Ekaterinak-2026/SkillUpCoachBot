@@ -21,6 +21,7 @@ async def init_db() -> None:
                 user_id INTEGER PRIMARY KEY,
                 username TEXT,
                 skill TEXT,
+                timezone TEXT DEFAULT 'Europe/Moscow',
                 morning_time TEXT DEFAULT '09:00',
                 evening_time TEXT DEFAULT '20:00',
                 streak INTEGER DEFAULT 0,
@@ -40,8 +41,16 @@ async def init_db() -> None:
                 FOREIGN KEY (user_id) REFERENCES users (user_id)
             )
         """)
-        await db.commit()
 
+        # Миграция: добавляем колонку timezone, если её нет
+        try:
+            await db.execute(
+                "ALTER TABLE users ADD COLUMN timezone TEXT DEFAULT 'Europe/Moscow'"
+            )
+        except Exception:
+            pass  # Колонка уже существует
+
+        await db.commit()
 
 # ============ ПОЛЬЗОВАТЕЛИ ============
 
@@ -89,8 +98,17 @@ async def update_user_time(user_id: int, morning: str = None, evening: str = Non
                 "UPDATE users SET evening_time = ? WHERE user_id = ?",
                 (evening, user_id)
             )
+            
         await db.commit()
-
+        
+async def update_user_timezone(user_id: int, timezone: str) -> None:
+    """Обновляет часовой пояс пользователя."""
+    async with aiosqlite.connect(DB_NAME) as db:
+        await db.execute(
+            "UPDATE users SET timezone = ? WHERE user_id = ?",
+            (timezone, user_id)
+        )
+        await db.commit()
 
 async def get_all_users() -> list[dict]:
     """Возвращает всех пользователей (для рассылки по расписанию)."""

@@ -1,59 +1,87 @@
 """
 Планировщик задач бота.
-Отправляет утренние и вечерние сообщения по расписанию,
-а также еженедельный дайджест по воскресеньям.
+Каждую минуту проверяет, у кого из пользователей наступило
+время напоминания в ИХ часовом поясе, и отправляет сообщение.
 """
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 from datetime import datetime
+from zoneinfo import ZoneInfo
 
 from aiogram import Bot
 
-from database import get_all_users, save_daily_plan, get_today_plan, get_week_stats
-from keyboards import step_type_keyboard, evening_check_keyboard, evening_no_plan_keyboard
+from database import (
+    get_all_users,
+    get_today_plan,
+    get_week_stats,
+)
+from keyboards import (
+    step_type_keyboard,
+    evening_check_keyboard,
+    evening_no_plan_keyboard,
+)
 import texts
 
-# Часовой пояс
-TIMEZONE = "Europe/Moscow"
-
-# Глобальный планировщик
-scheduler = AsyncIOScheduler(timezone=TIMEZONE)
+scheduler = AsyncIOScheduler(timezone="UTC")
 
 
-# ============ УТРЕННЯЯ РАССЫЛКА ============
+# ============ ВСПОМОГАТЕЛЬНОЕ ============
 
-async def send_morning_messages(bot: Bot) -> None:
-    """Отправляет утренний вопрос всем пользователям."""
-    users = await get_all_users()
-    for user in users:
-        if not user.get("skill"):
-            continue  # пропускаем тех, кто не выбрал навык
-        try:
-            await bot.send_message(
-                user["user_id"],
-                texts.MORNING_QUESTION.format(skill=user["skill"]),
-                reply_markup=step_type_keyboard()
-            )
-        except Exception as e:
-            print(f"Ошибка отправки утреннего сообщения {user['user_id']}: {e}")
+def _get_user_tz(user: dict) -> ZoneInfo:
+    """Возвращает часовой пояс пользователя или Москву по умолчанию."""
+    tz_name = user.get("timezone") or "Europe/Moscow"
+    try:
+        return ZoneInfo(tz_name)
+    except Exception:
+        return ZoneInfo("Europe/Moscow")
 
 
-# ============ ВЕЧЕРНЯЯ РАССЫЛКА ============
+def _now_hm(tz: ZoneInfo) -> str:
+    """Возвращает текущее время в формате ЧЧ:ММ для указанного пояса."""
+    return datetime.now(tz).strftime("%H:%M")
 
-async def send_evening_messages(bot: Bot) -> None:
-    """Отправляет вечерний чекап всем пользователям."""
+
+def _now_weekday(tz: ZoneInfo) -> int:
+    """Возвращает день недели (0 = понедельник, 6 = воскресенье)."""
+    return datetime.now(tz).weekday()
+
+
+# ============ УТРЕННИЕ НАПОМИНАНИЯ ============
+
+async def check_morning(bot: Bot) -> None:
+    """Отправляет утренний вопрос тем, у кого наступило время."""
     users = await get_all_users()
     for user in users:
         if not user.get("skill"):
             continue
+        tz = _get_user_tz(user)
+        if _now_hm(tz) == user.get("morning_time"):
+            try:
+                await bot.send_message(
+                    user["user_id"],
+                    texts.MORNING_QUESTION.format(skill=user["skill"]),
+                    reply_markup=step_type_keyboard()
+                )
+            except Exception as e:
+                print(f"Ошибка утреннего сообщения {user['user_id']}: {e}")
 
-        # Проверяем, был ли утренний план
+
+# ============ ВЕЧЕРНИЕ НАПОМИНАНИЯ ============
+
+async def check_evening(bot: Bot) -> None:
+    """Отправляет вечерний чекап тем, у кого наступило время."""
+    users = await get_all_users()
+    for user in users:
+        if not user.get("skill"):
+            continue
+        tz = _get_user_tz(user)
+        if _now_hm(tz) != user.get("evening_time"):
+            continue
+
         plan = await get_today_plan(user["user_id"])
-
         try:
             if plan:
-                # План был — спрашиваем про выполнение
                 await bot.send_message(
                     user["user_id"],
                     texts.EVENING_CHECK.format(
@@ -63,28 +91,32 @@ async def send_evening_messages(bot: Bot) -> None:
                     reply_markup=evening_check_keyboard()
                 )
             else:
-                # Плана не было
                 await bot.send_message(
                     user["user_id"],
                     texts.EVENING_NO_PLAN.format(skill=user["skill"]),
                     reply_markup=evening_no_plan_keyboard()
                 )
         except Exception as e:
-            print(f"Ошибка отправки вечернего сообщения {user['user_id']}: {e}")
+            print(f"Ошибка вечернего сообщения {user['user_id']}: {e}")
 
 
 # ============ ЕЖЕНЕДЕЛЬНЫЙ ДАЙДЖЕСТ ============
 
-async def send_weekly_digest(bot: Bot) -> None:
-    """Отправляет недельный дайджест всем пользователям (воскресенье, 18:00)."""
+async def check_digest(bot: Bot) -> None:
+    """Отправляет дайджест по воскресеньям в 18:00 локального времени."""
     users = await get_all_users()
     for user in users:
         if not user.get("skill"):
             continue
+        tz = _get_user_tz(user)
+
+        if _now_weekday(tz) != 6:
+            continue
+        if _now_hm(tz) != "18:00":
+            continue
 
         stats = await get_week_stats(user["user_id"])
 
-        # Формируем текст дайджеста
         text = texts.DIGEST_HEADER.format(name=user.get("username") or "друг")
         text += texts.DIGEST_BODY.format(
             skill=user["skill"],
@@ -95,7 +127,6 @@ async def send_weekly_digest(bot: Bot) -> None:
             total=user["total_success"]
         )
 
-        # Добавляем совет
         if user["best_streak"] >= 5:
             text += texts.DIGEST_TIP_LONG_STREAK.format(streak=user["best_streak"])
         elif stats["done_count"] < 3:
@@ -106,47 +137,36 @@ async def send_weekly_digest(bot: Bot) -> None:
         try:
             await bot.send_message(user["user_id"], text)
         except Exception as e:
-            print(f"Ошибка отправки дайджеста {user['user_id']}: {e}")
+            print(f"Ошибка дайджеста {user['user_id']}: {e}")
 
 
-# ============ ЗАПУСК ПЛАНИРОВЩИКА ============
+# ============ ЗАПУСК ============
 
 def setup_scheduler(bot: Bot) -> None:
-    """
-    Настраивает расписание:
-    - Утро: каждый день в 9:00
-    - Вечер: каждый день в 20:00
-    - Дайджест: воскресенье в 18:00
-    """
-    # Утренний вопрос
+    """Настраивает расписание: проверка каждую минуту."""
     scheduler.add_job(
-        send_morning_messages,
-        CronTrigger(hour=9, minute=0, timezone=TIMEZONE),
+        check_morning,
+        CronTrigger(minute="*", timezone="UTC"),
         args=[bot],
         id="morning_job",
         replace_existing=True
     )
-
-    # Вечерний чекап
     scheduler.add_job(
-        send_evening_messages,
-        CronTrigger(hour=20, minute=0, timezone=TIMEZONE),
+        check_evening,
+        CronTrigger(minute="*", timezone="UTC"),
         args=[bot],
         id="evening_job",
         replace_existing=True
     )
-
-    # Дайджест (воскресенье)
     scheduler.add_job(
-        send_weekly_digest,
-        CronTrigger(day_of_week="sun", hour=18, minute=0, timezone=TIMEZONE),
+        check_digest,
+        CronTrigger(minute="*", timezone="UTC"),
         args=[bot],
         id="digest_job",
         replace_existing=True
     )
-
     scheduler.start()
-    print("Планировщик запущен: утро 9:00, вечер 20:00, дайджест вс 18:00")
+    print("Планировщик запущен: проверка каждую минуту по локальному времени")
 
 
 def shutdown_scheduler() -> None:

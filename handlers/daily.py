@@ -6,6 +6,8 @@
 
 from aiogram import Router, F
 from aiogram.types import CallbackQuery
+from datetime import datetime
+from zoneinfo import ZoneInfo
 
 from database import (
     get_user,
@@ -15,7 +17,7 @@ from database import (
     mark_step_done,
     mark_step_failed,
 )
-from keyboards import step_type_keyboard
+from keyboards import step_type_keyboard, evening_check_keyboard
 import texts
 
 router = Router()
@@ -37,12 +39,31 @@ async def process_step_choice(callback: CallbackQuery) -> None:
     # Сохраняем план на сегодня
     await save_daily_plan(user_id, step_type)
 
-    await callback.message.edit_text(
-        texts.MORNING_CONFIRMED.format(
-            step_type=step_type,
-            skill=user["skill"]
+    # Проверяем: не прошло ли вечернее время в часовом поясе пользователя?
+    tz_name = user.get("timezone") or "Europe/Moscow"
+    try:
+        tz = ZoneInfo(tz_name)
+    except Exception:
+        tz = ZoneInfo("Europe/Moscow")
+
+    now_hm = datetime.now(tz).strftime("%H:%M")
+    evening_time = user.get("evening_time") or "20:00"
+
+    if now_hm >= evening_time:
+        # Вечер уже прошёл — сразу спрашиваем про выполнение
+        await callback.message.edit_text(
+            f"Отлично! Но вечерний чекап сегодня уже прошёл.\n\n"
+            f"Ты успел(а) сделать {step_type} по {user['skill']}?",
+            reply_markup=evening_check_keyboard()
         )
-    )
+    else:
+        # Обычный сценарий — ждём вечера
+        await callback.message.edit_text(
+            texts.MORNING_CONFIRMED.format(
+                step_type=step_type,
+                skill=user["skill"]
+            )
+        )
     await callback.answer()
 
 
