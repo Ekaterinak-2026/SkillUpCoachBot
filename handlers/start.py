@@ -98,7 +98,7 @@ async def process_skill_choice(callback: CallbackQuery, state: FSMContext) -> No
 @router.message(Onboarding.entering_custom_skill)
 async def process_custom_skill(message: Message, state: FSMContext) -> None:
     """Пользователь ввёл свой навык текстом."""
-    skill = message.text.strip()[:50]  # ограничим длину
+    skill = message.text.strip()[:50]
 
     if not skill:
         await message.answer("Напиши название навыка.")
@@ -109,6 +109,8 @@ async def process_custom_skill(message: Message, state: FSMContext) -> None:
         texts.SKILL_SAVED.format(skill=skill) + "\n\n" + texts.SET_TIME_PROMPT,
         reply_markup=time_setup_keyboard()
     )
+    # ← Добавляем переключение в состояние выбора времени
+    await state.set_state(Onboarding.choosing_skill)
 
 
 # ============ НАСТРОЙКА ВРЕМЕНИ ============
