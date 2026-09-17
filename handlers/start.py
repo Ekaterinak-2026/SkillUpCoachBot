@@ -18,6 +18,7 @@ from database import (
 from keyboards import (
     skills_keyboard,
     time_setup_keyboard,
+    start_choice_keyboard,
 )
 import texts
 
@@ -125,6 +126,10 @@ async def process_default_time(callback: CallbackQuery, state: FSMContext) -> No
     await callback.message.edit_text(
         texts.ONBOARDING_DONE.format(morning_time="09:00")
     )
+    await callback.message.answer(
+        texts.START_CHOICE,
+        reply_markup=start_choice_keyboard("09:00")
+    )
     await state.clear()
     await callback.answer()
 
@@ -171,7 +176,13 @@ async def process_evening_time(message: Message, state: FSMContext) -> None:
     await message.answer(
         texts.ONBOARDING_DONE.format(morning_time=morning)
     )
+  
+    await message.answer(
+        texts.START_CHOICE,
+        reply_markup=start_choice_keyboard(morning)
+    )
     await state.clear()
+  
 
 
 # ============ ВСПОМОГАТЕЛЬНОЕ ============

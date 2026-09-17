@@ -15,6 +15,7 @@ from database import (
     mark_step_done,
     mark_step_failed,
 )
+from keyboards import step_type_keyboard
 import texts
 
 router = Router()
@@ -150,4 +151,48 @@ async def process_noplan_postponed(callback: CallbackQuery) -> None:
 async def process_noplan_skip(callback: CallbackQuery) -> None:
     """Пользователь пропускает день."""
     await callback.message.edit_text(texts.STEP_SKIPPED)
+    await callback.answer()
+    # ============ ВЫБОР СТАРТА ============
+
+@router.callback_query(F.data == "start:now")
+async def process_start_now(callback: CallbackQuery) -> None:
+    """Пользователь хочет начать прямо сейчас — присылаем первый шаг."""
+    user = await get_user(callback.from_user.id)
+    if not user or not user.get("skill"):
+        await callback.answer("Сначала выбери навык через /start", show_alert=True)
+        return
+
+    await callback.message.edit_text(
+        texts.START_NOW_CONFIRMED + "\n\n" +
+        texts.MORNING_QUESTION.format(skill=user["skill"]),
+        reply_markup=step_type_keyboard()
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data == "start:today")
+async def process_start_today(callback: CallbackQuery) -> None:
+    """Пользователь хочет начать сегодня в назначенное время."""
+    user = await get_user(callback.from_user.id)
+    if not user:
+        await callback.answer()
+        return
+
+    await callback.message.edit_text(
+        texts.START_TODAY_CONFIRMED.format(morning_time=user["morning_time"])
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data == "start:tomorrow")
+async def process_start_tomorrow(callback: CallbackQuery) -> None:
+    """Пользователь хочет начать завтра."""
+    user = await get_user(callback.from_user.id)
+    if not user:
+        await callback.answer()
+        return
+
+    await callback.message.edit_text(
+        texts.START_TOMORROW_CONFIRMED.format(morning_time=user["morning_time"])
+    )
     await callback.answer()

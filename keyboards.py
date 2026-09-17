@@ -85,3 +85,11 @@ def change_skill_confirm_keyboard() -> InlineKeyboardMarkup:
     builder.button(text="❌ Отмена", callback_data="changeskill:no")
     builder.adjust(1)
     return builder.as_markup()
+def start_choice_keyboard(morning_time: str) -> InlineKeyboardMarkup:
+    """Кнопки выбора: начать сейчас / сегодня / завтра."""
+    builder = InlineKeyboardBuilder()
+    builder.button(text="▶️ Начать сейчас", callback_data="start:now")
+    builder.button(text=f"📅 Сегодня в {morning_time}", callback_data="start:today")
+    builder.button(text=f"📅 Завтра в {morning_time}", callback_data="start:tomorrow")
+    builder.adjust(1)
+    return builder.as_markup()

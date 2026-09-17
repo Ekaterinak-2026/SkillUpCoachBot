@@ -178,3 +178,18 @@ ALREADY_REGISTERED = (
 NOT_REGISTERED = (
     "Сначала давай познакомимся. Напиши /start."
 )
+# ============ ВЫБОР СТАРТА ============
+
+START_CHOICE = "Готово! 🎉\n\nКогда начнём?"
+
+START_NOW_CONFIRMED = "Отлично! Вот твой первый шаг:"
+
+START_TODAY_CONFIRMED = (
+    "Ок! Первый шаг придёт сегодня в {morning_time}. "
+    "Я напомню. Пока можешь посмотреть /help."
+)
+
+START_TOMORROW_CONFIRMED = (
+    "Ок! Первый шаг придёт завтра в {morning_time}. "
+    "А пока — можешь посмотреть /help."
+)
