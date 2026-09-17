@@ -8,6 +8,7 @@ import logging
 
 from aiogram import Bot, Dispatcher
 from aiogram.fsm.storage.memory import MemoryStorage
+from aiogram.types import BotCommand
 
 from config import BOT_TOKEN
 from database import init_db
@@ -24,7 +25,16 @@ logging.basicConfig(
     format="%(asctime)s - %(levelname)s - %(name)s - %(message)s"
 )
 logger = logging.getLogger(__name__)
-
+async def set_commands(bot: Bot) -> None:
+    """Устанавливает постоянное меню команд в интерфейсе Telegram."""
+    commands = [
+        BotCommand(command="start", description="Начать и выбрать навык"),
+        BotCommand(command="stats", description="Мой прогресс"),
+        BotCommand(command="settings", description="Настройки"),
+        BotCommand(command="help", description="Помощь"),
+    ]
+    await bot.set_my_commands(commands)
+    logger.info("Меню команд установлено")
 
 # ============ ЗАПУСК ============
 
@@ -47,6 +57,9 @@ async def main() -> None:
     dp.include_router(digest.router)
     logger.info("Роутеры подключены")
 
+    # 3.5. Устанавливаем меню команд
+    await set_commands(bot)
+    
     # 4. Запускаем планировщик
     setup_scheduler(bot)
 
