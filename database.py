@@ -253,3 +253,4 @@ async def get_week_stats(user_id: int) -> dict:
             (user_id,)
         )
         await db.commit()
+        
