@@ -4,7 +4,7 @@
 """
 
 from aiogram import Router, F
-from aiogram.filters import CommandStart
+from aiogram.filters import CommandStart, Command
 from aiogram.types import Message, CallbackQuery
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
@@ -126,7 +126,7 @@ async def process_skill_choice(callback: CallbackQuery, state: FSMContext) -> No
     await callback.answer()
 
 
-@router.message(Onboarding.entering_custom_skill)
+@router.message(Onboarding.entering_custom_skill, ~F.text.startswith("/"))
 async def process_custom_skill(message: Message, state: FSMContext) -> None:
     """Пользователь ввёл свой навык текстом."""
     skill = message.text.strip()[:50]
@@ -175,7 +175,7 @@ async def process_custom_time(callback: CallbackQuery, state: FSMContext) -> Non
     await callback.answer()
 
 
-@router.message(Onboarding.setting_morning)
+@router.message(Onboarding.setting_morning, ~F.text.startswith("/"))
 async def process_morning_time(message: Message, state: FSMContext) -> None:
     """Получаем утреннее время."""
     time_str = message.text.strip()
@@ -189,7 +189,7 @@ async def process_morning_time(message: Message, state: FSMContext) -> None:
     await state.set_state(Onboarding.setting_evening)
 
 
-@router.message(Onboarding.setting_evening)
+@router.message(Onboarding.setting_evening, ~F.text.startswith("/"))
 async def process_evening_time(message: Message, state: FSMContext) -> None:
     """Получаем вечернее время и завершаем онбординг."""
     time_str = message.text.strip()
@@ -207,6 +207,14 @@ async def process_evening_time(message: Message, state: FSMContext) -> None:
     await update_user_skill(user_id, skill)
     await update_user_timezone(user_id, timezone)
     await update_user_time(user_id, morning=morning, evening=time_str)
+    await message.answer(
+        texts.ONBOARDING_DONE.format(morning_time=morning)
+    )
+    await message.answer(
+        texts.START_CHOICE,
+        reply_markup=start_choice_keyboard(morning, timezone)
+    )
+    await state.clear()
   
 
 
@@ -222,3 +230,19 @@ def _is_valid_time(time_str: str) -> bool:
         return 0 <= hours <= 23 and 0 <= minutes <= 59
     except (ValueError, AttributeError):
         return False
+    @router.message(Command("cancel"))
+async def cmd_cancel(message: Message, state: FSMContext) -> None:
+    """Отменяет текущий процесс и сбрасывает состояние."""
+    current_state = await state.get_state()
+    if current_state is None:
+        await message.answer("Нечего отменять. Ты не в процессе настройки.")
+        return
+
+    await state.clear()
+    await message.answer(
+        "Ок, отменил. Что дальше?\n\n"
+        "• /start — пройти онбординг заново\n"
+        "• /stats — мой прогресс\n"
+        "• /settings — настройки\n"
+        "• /reset — сбросить профиль"
+    )
