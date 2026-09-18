@@ -3,7 +3,7 @@
 Хранит пользователей и их ежедневные шаги.
 Используем aiosqlite для асинхронной работы.
 """
-
+print("=== DATABASE.PY v3 ===")
 import aiosqlite
 from datetime import datetime, timedelta
 from typing import Optional
