@@ -14,11 +14,13 @@ from database import (
     get_week_stats,
     update_user_skill,
     update_user_time,
+    reset_user,
 )
 from keyboards import (
     settings_keyboard,
     skills_keyboard,
     change_skill_confirm_keyboard,
+    reset_confirm_keyboard,
 )
 import texts
 
@@ -211,3 +213,35 @@ def _is_valid_time(time_str: str) -> bool:
         return 0 <= hours <= 23 and 0 <= minutes <= 59
     except (ValueError, AttributeError):
         return False
+    # ============ /reset ============
+
+@router.message(Command("reset"))
+async def cmd_reset(message: Message) -> None:
+    """Запрашивает подтверждение сброса профиля."""
+    user_id = message.from_user.id
+    user = await get_user(user_id)
+
+    if not user or not user.get("skill"):
+        await message.answer(texts.NOT_REGISTERED)
+        return
+
+    await message.answer(
+        texts.RESET_CONFIRM,
+        reply_markup=reset_confirm_keyboard()
+    )
+
+
+@router.callback_query(F.data == "reset:yes")
+async def process_reset_yes(callback: CallbackQuery, state: FSMContext) -> None:
+    """Подтверждение сброса."""
+    await reset_user(callback.from_user.id)
+    await state.clear()
+    await callback.message.edit_text(texts.RESET_DONE)
+    await callback.answer()
+
+
+@router.callback_query(F.data == "reset:no")
+async def process_reset_no(callback: CallbackQuery) -> None:
+    """Отмена сброса."""
+    await callback.message.edit_text(texts.RESET_CANCELLED)
+    await callback.answer()

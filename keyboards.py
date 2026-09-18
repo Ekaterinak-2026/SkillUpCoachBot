@@ -109,3 +109,10 @@ def timezone_keyboard() -> InlineKeyboardMarkup:
     builder.button(text="Камчатка (UTC+12)", callback_data="tz:Asia/Kamchatka")
     builder.adjust(2)
     return builder.as_markup()
+def reset_confirm_keyboard() -> InlineKeyboardMarkup:
+    """Кнопки подтверждения сброса профиля."""
+    builder = InlineKeyboardBuilder()
+    builder.button(text="⚠️ Да, сбросить", callback_data="reset:yes")
+    builder.button(text="❌ Отмена", callback_data="reset:no")
+    builder.adjust(1)
+    return builder.as_markup()
