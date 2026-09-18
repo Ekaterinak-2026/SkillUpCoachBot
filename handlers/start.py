@@ -230,9 +230,11 @@ def _is_valid_time(time_str: str) -> bool:
         return 0 <= hours <= 23 and 0 <= minutes <= 59
     except (ValueError, AttributeError):
         return False
+
+
     @router.message(Command("cancel"))
-async def cmd_cancel(message: Message, state: FSMContext) -> None:
-    """Отменяет текущий процесс и сбрасывает состояние."""
+    async def cmd_cancel(message: Message, state: FSMContext) -> None:
+     """Отменяет текущий процесс и сбрасывает состояние."""
     current_state = await state.get_state()
     if current_state is None:
         await message.answer("Нечего отменять. Ты не в процессе настройки.")
@@ -246,3 +248,6 @@ async def cmd_cancel(message: Message, state: FSMContext) -> None:
         "• /settings — настройки\n"
         "• /reset — сбросить профиль"
     )
+
+
+    
