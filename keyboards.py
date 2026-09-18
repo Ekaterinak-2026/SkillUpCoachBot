@@ -85,11 +85,23 @@ def change_skill_confirm_keyboard() -> InlineKeyboardMarkup:
     builder.button(text="❌ Отмена", callback_data="changeskill:no")
     builder.adjust(1)
     return builder.as_markup()
-def start_choice_keyboard(morning_time: str) -> InlineKeyboardMarkup:
-    """Кнопки выбора: начать сейчас / сегодня / завтра."""
+def start_choice_keyboard(morning_time: str, timezone_name: str = "Europe/Moscow") -> InlineKeyboardMarkup:
+    """Кнопки выбора: начать сейчас / сегодня / завтра.
+    Кнопка «Сегодня» показывается только если morning_time ещё не прошло."""
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    try:
+        tz = ZoneInfo(timezone_name)
+    except Exception:
+        tz = ZoneInfo("Europe/Moscow")
+
+    now_hm = datetime.now(tz).strftime("%H:%M")
+
     builder = InlineKeyboardBuilder()
     builder.button(text="▶️ Начать сейчас", callback_data="start:now")
-    builder.button(text=f"📅 Сегодня в {morning_time}", callback_data="start:today")
+    if morning_time > now_hm:
+        builder.button(text=f"📅 Сегодня в {morning_time}", callback_data="start:today")
     builder.button(text=f"📅 Завтра в {morning_time}", callback_data="start:tomorrow")
     builder.adjust(1)
     return builder.as_markup()

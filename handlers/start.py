@@ -162,7 +162,7 @@ async def process_default_time(callback: CallbackQuery, state: FSMContext) -> No
     )
     await callback.message.answer(
         texts.START_CHOICE,
-        reply_markup=start_choice_keyboard("09:00")
+        reply_markup=start_choice_keyboard("09:00", timezone)
     )
     await state.clear()
     await callback.answer()
@@ -201,20 +201,12 @@ async def process_evening_time(message: Message, state: FSMContext) -> None:
     data = await state.get_data()
     skill = data.get("skill")
     morning = data.get("morning_time")
+    timezone = data.get("timezone", "Europe/Moscow")
 
     user_id = message.from_user.id
     await update_user_skill(user_id, skill)
+    await update_user_timezone(user_id, timezone)
     await update_user_time(user_id, morning=morning, evening=time_str)
-
-    await message.answer(
-        texts.ONBOARDING_DONE.format(morning_time=morning)
-    )
-  
-    await message.answer(
-        texts.START_CHOICE,
-        reply_markup=start_choice_keyboard(morning)
-    )
-    await state.clear()
   
 
 

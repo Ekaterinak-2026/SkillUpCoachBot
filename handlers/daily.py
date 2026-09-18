@@ -17,7 +17,7 @@ from database import (
     mark_step_done,
     mark_step_failed,
 )
-from keyboards import step_type_keyboard, evening_check_keyboard
+from keyboards import step_type_keyboard, evening_check_keyboard, start_choice_keyboard
 import texts
 
 router = Router()
