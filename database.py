@@ -245,12 +245,13 @@ async def get_week_stats(user_id: int) -> dict:
             "favorite_count": favorite_count,
         }
     async def reset_user(user_id: int) -> None:
-     async with aiosqlite.connect(DB_NAME) as db:
-        await db.execute("DELETE FROM daily_steps WHERE user_id = ?", (user_id,))
-        await db.execute(
-            "UPDATE users SET skill = NULL, streak = 0, "
-            "best_streak = 0, total_success = 0 WHERE user_id = ?",
-            (user_id,)
-        )
-        await db.commit()
+        async with aiosqlite.connect(DB_NAME) as db:
+            await db.execute("DELETE FROM daily_steps WHERE user_id = ?", (user_id,))
+            await db.execute(
+                "UPDATE users SET skill = NULL, streak = 0, "
+                "best_streak = 0, total_success = 0 WHERE user_id = ?",
+                (user_id,)
+            )
+            await db.commit()
+            # end of file
         
