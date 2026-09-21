@@ -28,10 +28,11 @@ logger = logging.getLogger(__name__)
 async def set_commands(bot: Bot) -> None:
     """Устанавливает постоянное меню команд в интерфейсе Telegram."""
     commands = [
-        BotCommand(command="start", description="Начать и выбрать навык"),
-        BotCommand(command="stats", description="Мой прогресс"),
-        BotCommand(command="settings", description="Настройки"),
-        BotCommand(command="help", description="Помощь"),
+        BotCommand(command="start", description="🚀 Начать и выбрать навык"),
+        BotCommand(command="stats", description="📊 Мой прогресс"),
+        BotCommand(command="settings", description="⚙️ Настройки"),
+        BotCommand(command="reset", description="🔄 Сбросить профиль"),
+        BotCommand(command="help", description="❓ Помощь"),
     ]
     await bot.set_my_commands(commands)
     logger.info("Меню команд установлено")
