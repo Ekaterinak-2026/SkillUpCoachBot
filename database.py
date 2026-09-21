@@ -1,7 +1,6 @@
 """
 Работа с базой данных SQLite.
-Хранит пользователей и их ежедневные шаги.
-Используем aiosqlite для асинхронной работы.
+Используем глобальное соединение + WAL для стабильной работы в контейнерах.
 """
 
 import aiosqlite
@@ -9,6 +8,22 @@ from datetime import datetime, timedelta
 from typing import Optional
 
 DB_NAME = "skillup.db"
+
+# Глобальное соединение (singleton)
+_db: aiosqlite.Connection | None = None
+
+
+async def get_db() -> aiosqlite.Connection:
+    """Возвращает глобальное соединение, создавая его при необходимости."""
+    global _db
+    if _db is None:
+        _db = await aiosqlite.connect(DB_NAME)
+        _db.row_factory = aiosqlite.Row
+        # WAL — позволяет параллельное чтение и запись
+        await _db.execute("PRAGMA journal_mode=WAL")
+        await _db.execute("PRAGMA synchronous=NORMAL")
+        await _db.execute("PRAGMA busy_timeout=5000")
+    return _db
 
 
 async def reset_user(user_id: int) -> None:
