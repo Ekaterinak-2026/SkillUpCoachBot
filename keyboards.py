@@ -128,3 +128,9 @@ def reset_confirm_keyboard() -> InlineKeyboardMarkup:
     builder.button(text="❌ Отмена", callback_data="reset:no")
     builder.adjust(1)
     return builder.as_markup()
+def nudge_keyboard() -> InlineKeyboardMarkup:
+    """Кнопка CTA для nudge-сообщений."""
+    builder = InlineKeyboardBuilder()
+    builder.button(text="▶️ Сделать шаг сейчас", callback_data="start:now")
+    builder.adjust(1)
+    return builder.as_markup()

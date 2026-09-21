@@ -22,6 +22,7 @@ from keyboards import (
     step_type_keyboard,
     evening_check_keyboard,
     evening_no_plan_keyboard,
+    nudge_keyboard,
 )
 import texts
 
@@ -163,12 +164,18 @@ async def check_nudges(bot: Bot) -> None:
         if days == 999:
             continue
 
-        # Выбираем случайную фразу
+        
+            # Выбираем случайную фразу
         template = random.choice(texts.NUDGE_MESSAGES)
         text = template.format(skills=user["skill"])
+        text += "\n\n" + texts.NUDGE_CTA_TEXT
 
         try:
-            await bot.send_message(user["user_id"], text)
+            await bot.send_message(
+                user["user_id"],
+                text,
+                reply_markup=nudge_keyboard()
+            )
         except Exception as e:
             print(f"Ошибка nudge {user['user_id']}: {e}")
 
