@@ -142,3 +142,59 @@ def add_more_skills_keyboard(has_skills: int, max_skills: int = 5) -> InlineKeyb
     builder.button(text="✅ Готово, продолжить", callback_data="onb:done")
     builder.adjust(1)
     return builder.as_markup()
+# ============ УПРАВЛЕНИЕ НАВЫКАМИ ============
+
+def skills_menu_keyboard(has_active: bool, has_archived: bool) -> InlineKeyboardMarkup:
+    """Главное меню /skills."""
+    builder = InlineKeyboardBuilder()
+    builder.button(text="➕ Добавить навык", callback_data="skills:add")
+    if has_active:
+        builder.button(text="🗑 Удалить навык", callback_data="skills:delete")
+    if has_archived:
+        builder.button(text="♻️ Восстановить из архива", callback_data="skills:restore")
+    builder.button(text="❌ Закрыть", callback_data="skills:close")
+    builder.adjust(1)
+    return builder.as_markup()
+
+
+def skills_add_keyboard() -> InlineKeyboardMarkup:
+    """Список навыков для добавления из /skills (отдельные callback_data)."""
+    builder = InlineKeyboardBuilder()
+    builder.button(text="Python", callback_data="skill_add:Python")
+    builder.button(text="Java", callback_data="skill_add:Java")
+    builder.button(text="SQL", callback_data="skill_add:SQL")
+    builder.button(text="Английский", callback_data="skill_add:Английский")
+    builder.button(text="System Design", callback_data="skill_add:System Design")
+    builder.button(text="Другое", callback_data="skill_add:other")
+    builder.button(text="← Назад", callback_data="skills:menu")
+    builder.adjust(2)
+    return builder.as_markup()
+
+
+def archive_choose_keyboard(skills: list[dict]) -> InlineKeyboardMarkup:
+    """Кнопки выбора навыка для архивации."""
+    builder = InlineKeyboardBuilder()
+    for s in skills:
+        builder.button(text=f"🗑 {s['name']}", callback_data=f"skill_arch:{s['id']}")
+    builder.button(text="← Назад", callback_data="skills:menu")
+    builder.adjust(1)
+    return builder.as_markup()
+
+
+def restore_choose_keyboard(skills: list[dict]) -> InlineKeyboardMarkup:
+    """Кнопки выбора навыка для восстановления."""
+    builder = InlineKeyboardBuilder()
+    for s in skills:
+        builder.button(text=f"♻️ {s['name']}", callback_data=f"skill_restore:{s['id']}")
+    builder.button(text="← Назад", callback_data="skills:menu")
+    builder.adjust(1)
+    return builder.as_markup()
+
+
+def archive_confirm_keyboard(skill_id: int) -> InlineKeyboardMarkup:
+    """Подтверждение архивации навыка."""
+    builder = InlineKeyboardBuilder()
+    builder.button(text="✅ Да, в архив", callback_data=f"skill_arch_yes:{skill_id}")
+    builder.button(text="❌ Отмена", callback_data="skills:menu")
+    builder.adjust(1)
+    return builder.as_markup()
