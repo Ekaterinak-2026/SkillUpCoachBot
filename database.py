@@ -256,4 +256,25 @@ async def get_week_stats(user_id: int) -> dict:
             "favorite_type": favorite_type,
             "favorite_count": favorite_count,
         }
- 
+async def days_since_last_activity(user_id: int) -> int:
+    """Возвращает количество дней с последнего выполненного шага.
+    Если не выполнено ни одного — возвращает 999."""
+    async with aiosqlite.connect(DB_NAME) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT MAX(date) as last_date FROM daily_steps "
+            "WHERE user_id = ? AND status = 'выполнен'",
+            (user_id,)
+        ) as cursor:
+            row = await cursor.fetchone()
+            last = row["last_date"] if row else None
+
+    if not last:
+        return 999
+
+    try:
+        last_dt = datetime.strptime(last, "%Y-%m-%d")
+        diff = (datetime.now() - last_dt).days
+        return diff
+    except Exception:
+        return 999

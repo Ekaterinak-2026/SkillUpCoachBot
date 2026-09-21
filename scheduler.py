@@ -11,10 +11,12 @@ from zoneinfo import ZoneInfo
 
 from aiogram import Bot
 
+import random
 from database import (
     get_all_users,
     get_today_plan,
     get_week_stats,
+    days_since_last_activity,
 )
 from keyboards import (
     step_type_keyboard,
@@ -140,6 +142,37 @@ async def check_digest(bot: Bot) -> None:
             print(f"Ошибка дайджеста {user['user_id']}: {e}")
 
 
+
+# ============ ПОДБАДРИВАЮЩИЕ СООБЩЕНИЯ ============
+
+async def check_nudges(bot: Bot) -> None:
+    """Отправляет подбадривающее сообщение пользователям, которые давно не заходили.
+    Срабатывает раз в день — в 13:00 локального времени пользователя."""
+    users = await get_all_users()
+    for user in users:
+        if not user.get("skill"):
+            continue
+
+        tz = _get_user_tz(user)
+        # Отправляем только в 13:00 по локальному времени
+        if _now_hm(tz) != "13:00":
+            continue
+
+        # Проверяем, сколько дней пользователь не выполнял шаги
+        days = await days_since_last_activity(user["user_id"])
+        if days < 2 or days == 999:
+            continue
+
+        # Выбираем случайную фразу
+        template = random.choice(texts.NUDGE_MESSAGES)
+        text = template.format(skills=user["skill"])
+
+        try:
+            await bot.send_message(user["user_id"], text)
+        except Exception as e:
+            print(f"Ошибка nudge {user['user_id']}: {e}")
+
+
 # ============ ЗАПУСК ============
 
 def setup_scheduler(bot: Bot) -> None:
@@ -156,6 +189,13 @@ def setup_scheduler(bot: Bot) -> None:
         CronTrigger(minute="*", timezone="UTC"),
         args=[bot],
         id="evening_job",
+        replace_existing=True
+    )
+    scheduler.add_job(
+        check_nudges,
+        CronTrigger(minute="*", timezone="UTC"),
+        args=[bot],
+        id="nudge_job",
         replace_existing=True
     )
     scheduler.add_job(
