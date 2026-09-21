@@ -25,9 +25,12 @@ async def reset_user(user_id: int) -> None:
 
 # ============ ИНИЦИАЛИЗАЦИЯ ============
 
+# ============ ИНИЦИАЛИЗАЦИЯ ============
+
 async def init_db() -> None:
     """Создаёт таблицы при первом запуске бота."""
     async with aiosqlite.connect(DB_NAME) as db:
+        # Таблица пользователей
         await db.execute("""
             CREATE TABLE IF NOT EXISTS users (
                 user_id INTEGER PRIMARY KEY,
@@ -42,14 +45,30 @@ async def init_db() -> None:
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """)
+
+        # Таблица ежедневных шагов
         await db.execute("""
             CREATE TABLE IF NOT EXISTS daily_steps (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 user_id INTEGER,
+                skill_id INTEGER,
                 date TEXT,
                 step_type TEXT,
                 status TEXT,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (user_id) REFERENCES users (user_id)
+            )
+        """)
+
+        # НОВАЯ таблица: навыки пользователя
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS skills (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL,
+                name TEXT NOT NULL,
+                status TEXT DEFAULT 'active',
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                archived_at TIMESTAMP,
                 FOREIGN KEY (user_id) REFERENCES users (user_id)
             )
         """)
@@ -60,10 +79,41 @@ async def init_db() -> None:
                 "ALTER TABLE users ADD COLUMN timezone TEXT DEFAULT 'Europe/Moscow'"
             )
         except Exception:
-            pass  # Колонка уже существует
+            pass
+
+        # Миграция: добавляем skill_id в daily_steps, если его нет
+        try:
+            await db.execute(
+                "ALTER TABLE daily_steps ADD COLUMN skill_id INTEGER"
+            )
+        except Exception:
+            pass
 
         await db.commit()
 
+        # Миграция данных: переносим старый users.skill в таблицу skills
+        await _migrate_user_skills(db)
+
+
+async def _migrate_user_skills(db) -> None:
+    """Переносит старый users.skill в таблицу skills для существующих пользователей."""
+    async with db.execute("""
+        SELECT u.user_id, u.skill FROM users u
+        WHERE u.skill IS NOT NULL
+        AND NOT EXISTS (SELECT 1 FROM skills s WHERE s.user_id = u.user_id)
+    """) as cursor:
+        rows = await cursor.fetchall()
+
+    for user_id, skill_name in rows:
+        await db.execute(
+            "INSERT INTO skills (user_id, name, status) VALUES (?, ?, 'active')",
+            (user_id, skill_name)
+        )
+
+    if rows:
+        await db.commit()
+        print(f"Миграция: перенесено {len(rows)} навыков пользователей")
+    
 # ============ ПОЛЬЗОВАТЕЛИ ============
 
 async def add_user(user_id: int, username: str) -> None:
@@ -80,7 +130,7 @@ async def get_user(user_id: int) -> Optional[dict]:
     """Возвращает данные пользователя или None."""
     async with aiosqlite.connect(DB_NAME) as db:
         db.row_factory = aiosqlite.Row
-        async with db.execute(
+    async with db.execute(
             "SELECT * FROM users WHERE user_id = ?", (user_id,)
         ) as cursor:
             row = await cursor.fetchone()
