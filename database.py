@@ -406,3 +406,32 @@ async def restore_skill(skill_id: int) -> None:
         (skill_id,)
     )
     await db.commit()
+async def save_daily_plan_for_skill(user_id: int, skill_id: int, step_type: str) -> None:
+    today = datetime.now().strftime("%Y-%m-%d")
+    db = await get_db()
+
+    await db.execute(
+        "DELETE FROM daily_steps WHERE user_id = ? AND skill_id = ? AND date = ?",
+        (user_id, skill_id, today)
+    )
+
+    await db.execute(
+        "INSERT INTO daily_steps (user_id, skill_id, date, step_type, status) "
+        "VALUES (?, ?, ?, ?, 'запланирован')",
+        (user_id, skill_id, today, step_type)
+    )
+    await db.commit()
+
+
+async def get_all_today_plans(user_id: int) -> list[dict]:
+    """Возвращает все планы пользователя на сегодня (по всем навыкам)."""
+    today = datetime.now().strftime("%Y-%m-%d")
+    db = await get_db()
+    async with db.execute(
+        "SELECT ds.*, s.name as skill_name FROM daily_steps ds "
+        "LEFT JOIN skills s ON ds.skill_id = s.id "
+        "WHERE ds.user_id = ? AND ds.date = ? ORDER BY ds.id",
+        (user_id, today)
+    ) as cursor:
+        rows = await cursor.fetchall()
+        return [dict(r) for r in rows]

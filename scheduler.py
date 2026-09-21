@@ -17,6 +17,7 @@ from database import (
     get_today_plan,
     get_week_stats,
     days_since_last_activity,
+    get_active_skills,
 )
 from keyboards import (
     step_type_keyboard,
@@ -53,21 +54,34 @@ def _now_weekday(tz: ZoneInfo) -> int:
 # ============ УТРЕННИЕ НАПОМИНАНИЯ ============
 
 async def check_morning(bot: Bot) -> None:
-    """Отправляет утренний вопрос тем, у кого наступило время."""
+    """Отправляет утренний вопрос с выбором шага по каждому навыку."""
     users = await get_all_users()
     for user in users:
         if not user.get("skill"):
             continue
         tz = _get_user_tz(user)
-        if _now_hm(tz) == user.get("morning_time"):
-            try:
-                await bot.send_message(
-                    user["user_id"],
-                    texts.MORNING_QUESTION.format(skill=user["skill"]),
-                    reply_markup=step_type_keyboard()
-                )
-            except Exception as e:
-                print(f"Ошибка утреннего сообщения {user['user_id']}: {e}")
+        if _now_hm(tz) != user.get("morning_time"):
+            continue
+
+        # Получаем активные навыки
+        skills = await get_active_skills(user["user_id"])
+        if not skills:
+            continue
+
+        # Отправляем сообщение с первым навыком
+        first = skills[0]
+        text = (
+            "☀️ Доброе утро! Выбери шаг на сегодня.\n\n"
+            f"📌 {first['name']}:"
+        )
+        try:
+            await bot.send_message(
+                user["user_id"],
+                text,
+                reply_markup=step_type_keyboard(first["id"])
+            )
+        except Exception as e:
+            print(f"Ошибка утреннего сообщения {user['user_id']}: {e}")
 
 
 # ============ ВЕЧЕРНИЕ НАПОМИНАНИЯ ============

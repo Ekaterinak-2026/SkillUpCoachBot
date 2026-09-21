@@ -6,18 +6,26 @@
 
 from aiogram import Router, F
 from aiogram.types import CallbackQuery
+from aiogram.fsm.context import FSMContext
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
 from database import (
     get_user,
     save_daily_plan,
+    save_daily_plan_for_skill,
     get_today_plan,
+    get_all_today_plans,
     update_step_status,
     mark_step_done,
     mark_step_failed,
+    get_active_skills,
 )
-from keyboards import step_type_keyboard, evening_check_keyboard, start_choice_keyboard
+from keyboards import (
+    step_type_keyboard,
+    evening_check_keyboard,
+    start_choice_keyboard,
+)
 import texts
 
 router = Router()
@@ -25,45 +33,69 @@ router = Router()
 
 # ============ УТРО: ВЫБОР ТИПА ШАГА ============
 
-@router.callback_query(F.data.startswith("step:"))
-async def process_step_choice(callback: CallbackQuery) -> None:
-    """Пользователь выбрал тип шага утром."""
-    step_type = callback.data.split(":", 1)[1]
-    user_id = callback.from_user.id
-
-    user = await get_user(user_id)
-    if not user or not user.get("skill"):
-        await callback.answer("Сначала выбери навык через /start", show_alert=True)
+@router.callback_query(F.data.startswith("ms:"))
+async def process_morning_step(callback: CallbackQuery, state: FSMContext) -> None:
+    """Пользователь выбрал тип шага для одного навыка утром."""
+    parts = callback.data.split(":", 2)
+    if len(parts) != 3:
+        await callback.answer()
         return
 
-    # Сохраняем план на сегодня
-    await save_daily_plan(user_id, step_type)
-
-    # Проверяем: не прошло ли вечернее время в часовом поясе пользователя?
-    tz_name = user.get("timezone") or "Europe/Moscow"
     try:
-        tz = ZoneInfo(tz_name)
-    except Exception:
-        tz = ZoneInfo("Europe/Moscow")
+        skill_id = int(parts[1])
+    except ValueError:
+        await callback.answer()
+        return
 
-    now_hm = datetime.now(tz).strftime("%H:%M")
-    evening_time = user.get("evening_time") or "20:00"
+    step_type = parts[2]
+    user_id = callback.from_user.id
 
-    if now_hm >= evening_time:
-        # Вечер уже прошёл — сразу спрашиваем про выполнение
+    # Получаем активные навыки
+    skills = await get_active_skills(user_id)
+    if not skills:
+        await callback.answer("Сначала добавь навык через /start", show_alert=True)
+        return
+
+    # Сохраняем выбор в FSM
+    data = await state.get_data()
+    chosen: dict = data.get("morning_chosen", {})
+    chosen[str(skill_id)] = step_type
+    await state.update_data(morning_chosen=chosen)
+
+    # Ищем следующий непройденный навык
+    next_skill = None
+    for s in skills:
+        if str(s["id"]) not in chosen:
+            next_skill = s
+            break
+
+    if next_skill:
+        # Формируем сообщение с уже выбранными + следующим
+        lines = ["☀️ Доброе утро! Выбери шаг на сегодня.", ""]
+        for s in skills:
+            if str(s["id"]) in chosen:
+                lines.append(f"✅ {s['name']} — {chosen[str(s['id'])]}")
+        lines.append("")
+        lines.append(f"📌 {next_skill['name']}:")
+
         await callback.message.edit_text(
-            f"Отлично! Но вечерний чекап сегодня уже прошёл.\n\n"
-            f"Ты успел(а) сделать {step_type} по {user['skill']}?",
-            reply_markup=evening_check_keyboard()
+            "\n".join(lines),
+            reply_markup=step_type_keyboard(next_skill["id"])
         )
     else:
-        # Обычный сценарий — ждём вечера
-        await callback.message.edit_text(
-            texts.MORNING_CONFIRMED.format(
-                step_type=step_type,
-                skill=user["skill"]
-            )
-        )
+        # Все навыки пройдены — сохраняем в БД
+        for sid_str, st in chosen.items():
+            await save_daily_plan_for_skill(user_id, int(sid_str), st)
+
+        lines = ["☀️ План на сегодня:", ""]
+        for s in skills:
+            lines.append(f"✅ {s['name']} — {chosen[str(s['id'])]}")
+        lines.append("")
+        lines.append("Поехали! 🚀")
+
+        await callback.message.edit_text("\n".join(lines))
+        await state.clear()
+
     await callback.answer()
 
 
@@ -176,18 +208,25 @@ async def process_noplan_skip(callback: CallbackQuery) -> None:
     # ============ ВЫБОР СТАРТА ============
 
 @router.callback_query(F.data == "start:now")
-async def process_start_now(callback: CallbackQuery) -> None:
-    """Пользователь хочет начать прямо сейчас — присылаем первый шаг."""
-    user = await get_user(callback.from_user.id)
-    if not user or not user.get("skill"):
-        await callback.answer("Сначала выбери навык через /start", show_alert=True)
+async def process_start_now(callback: CallbackQuery, state: FSMContext) -> None:
+    """Пользователь хочет начать прямо сейчас — присылаем первый навык."""
+    user_id = callback.from_user.id
+    skills = await get_active_skills(user_id)
+
+    if not skills:
+        await callback.answer("Сначала добавь навык через /start", show_alert=True)
         return
 
-    await callback.message.edit_text(
-        texts.START_NOW_CONFIRMED + "\n\n" +
-        texts.MORNING_QUESTION.format(skill=user["skill"]),
-        reply_markup=step_type_keyboard()
+    first = skills[0]
+    text = (
+        "☀️ Отлично! Начнём прямо сейчас.\n\n"
+        f"📌 {first['name']}:"
     )
+    await callback.message.edit_text(
+        text,
+        reply_markup=step_type_keyboard(first["id"])
+    )
+    await state.update_data(morning_chosen={})
     await callback.answer()
 
 

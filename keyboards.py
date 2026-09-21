@@ -33,13 +33,13 @@ def time_setup_keyboard() -> InlineKeyboardMarkup:
 
 # ============ УТРЕННИЙ ВОПРОС ============
 
-def step_type_keyboard() -> InlineKeyboardMarkup:
-    """Кнопки выбора типа шага утром."""
+def step_type_keyboard(skill_id: int) -> InlineKeyboardMarkup:
+    """Кнопки выбора типа шага утром (с привязкой к skill_id)."""
     builder = InlineKeyboardBuilder()
-    builder.button(text="📖 Теория", callback_data="step:теория")
-    builder.button(text="💻 Практика", callback_data="step:практика")
-    builder.button(text="🗣 Общение", callback_data="step:общение")
-    builder.button(text="🧠 Рефлексия", callback_data="step:рефлексия")
+    builder.button(text="📖 Теория", callback_data=f"ms:{skill_id}:теория")
+    builder.button(text="💻 Практика", callback_data=f"ms:{skill_id}:практика")
+    builder.button(text="🗣 Общение", callback_data=f"ms:{skill_id}:общение")
+    builder.button(text="🧠 Рефлексия", callback_data=f"ms:{skill_id}:рефлексия")
     builder.adjust(2)
     return builder.as_markup()
 
