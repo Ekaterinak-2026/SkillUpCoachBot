@@ -134,3 +134,11 @@ def nudge_keyboard() -> InlineKeyboardMarkup:
     builder.button(text="▶️ Сделать шаг сейчас", callback_data="start:now")
     builder.adjust(1)
     return builder.as_markup()
+def add_more_skills_keyboard(has_skills: int, max_skills: int = 5) -> InlineKeyboardMarkup:
+    """Кнопки после выбора навыка: добавить ещё или готово."""
+    builder = InlineKeyboardBuilder()
+    if has_skills < max_skills:
+        builder.button(text="➕ Добавить ещё навык", callback_data="onb:add_more")
+    builder.button(text="✅ Готово, продолжить", callback_data="onb:done")
+    builder.adjust(1)
+    return builder.as_markup()

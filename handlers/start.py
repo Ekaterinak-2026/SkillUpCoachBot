@@ -9,18 +9,23 @@ from aiogram.types import Message, CallbackQuery
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 
+from keyboards import (
+    skills_keyboard,
+    time_setup_keyboard,
+    start_choice_keyboard,
+    timezone_keyboard,
+    add_more_skills_keyboard,
+)
 from database import (
     add_user,
     get_user,
     update_user_skill,
     update_user_time,
     update_user_timezone,
-)
-from keyboards import (
-    skills_keyboard,
-    time_setup_keyboard,
-    start_choice_keyboard,
-    timezone_keyboard,
+    add_skill,
+    get_active_skills,
+    count_active_skills,
+    MAX_SKILLS,
 )
 import texts
 
@@ -33,6 +38,7 @@ router = Router()
 class Onboarding(StatesGroup):
     choosing_skill = State()
     entering_custom_skill = State()
+    adding_more_skills = State()
     choosing_timezone = State()
     setting_morning = State()
     setting_evening = State()
@@ -73,6 +79,42 @@ async def cmd_start(message: Message, state: FSMContext) -> None:
 
 
 # ============ ВЫБОР НАВЫКА ============
+@router.callback_query(F.data == "onb:add_more", Onboarding.adding_more_skills)
+async def process_add_more(callback: CallbackQuery, state: FSMContext) -> None:
+    """Пользователь хочет добавить ещё навык."""
+    user_id = callback.from_user.id
+    count = await count_active_skills(user_id)
+
+    if count >= MAX_SKILLS:
+        await callback.answer("Достигнут максимум навыков", show_alert=True)
+        return
+
+    await callback.message.edit_text(
+        "Какой навык хочешь добавить ещё?",
+        reply_markup=skills_keyboard()
+    )
+    await state.set_state(Onboarding.choosing_skill)
+    await callback.answer()
+
+
+@router.callback_query(F.data == "onb:done", Onboarding.adding_more_skills)
+async def process_done_adding(callback: CallbackQuery, state: FSMContext) -> None:
+    """Пользователь закончил добавлять навыки — переходим к часовому поясу."""
+    user_id = callback.from_user.id
+    skills = await get_active_skills(user_id)
+
+    if not skills:
+        await callback.answer("Сначала выбери хотя бы один навык", show_alert=True)
+        return
+
+    await callback.message.edit_text(
+        texts.CHOOSE_TIMEZONE,
+        reply_markup=timezone_keyboard()
+    )
+    await state.set_state(Onboarding.choosing_timezone)
+    await callback.answer()
+
+
 @router.callback_query(F.data.startswith("tz:"), Onboarding.choosing_timezone)
 async def process_timezone_choice(callback: CallbackQuery, state: FSMContext) -> None:
     """Пользователь выбрал часовой пояс."""
@@ -105,42 +147,84 @@ async def process_timezone_choice(callback: CallbackQuery, state: FSMContext) ->
 
 @router.callback_query(F.data.startswith("skill:"), Onboarding.choosing_skill)
 async def process_skill_choice(callback: CallbackQuery, state: FSMContext) -> None:
-    """Пользователь выбрал навык из списка."""
+    """Пользователь выбрал навык из списка — сохраняем и предлагаем добавить ещё."""
     skill = callback.data.split(":", 1)[1]
+    user_id = callback.from_user.id
 
     if skill == "other":
-        # Хотим свой навык
         await callback.message.edit_text(texts.CHOOSE_SKILL_OTHER)
         await state.set_state(Onboarding.entering_custom_skill)
         await callback.answer()
         return
 
+    # Пытаемся добавить навык в БД
+    result = await add_skill(user_id, skill)
 
-        # Сохраняем навык
-    await state.update_data(skill=skill)
+    if result == -2:  # дубликат
+        await callback.message.edit_text(
+            texts.SKILL_ALREADY_EXISTS,
+            reply_markup=add_more_skills_keyboard(
+                await count_active_skills(user_id), MAX_SKILLS
+            )
+        )
+        await callback.answer()
+        return
+
+    if result == -1:  # достигнут лимит
+        await callback.message.edit_text(
+            texts.MAX_SKILLS_REACHED,
+            reply_markup=add_more_skills_keyboard(MAX_SKILLS, MAX_SKILLS)
+        )
+        await callback.answer()
+        return
+
+    # Успех — показываем «Хочешь ещё?»
+    skills = await get_active_skills(user_id)
+    skills_list = ", ".join([s["name"] for s in skills])
+
     await callback.message.edit_text(
-        texts.SKILL_SAVED.format(skill=skill) + "\n\n" + texts.CHOOSE_TIMEZONE,
-        reply_markup=timezone_keyboard()
+        texts.SKILL_ADDED.format(skill=skill, skills_list=skills_list),
+        reply_markup=add_more_skills_keyboard(len(skills), MAX_SKILLS)
     )
-    await state.set_state(Onboarding.choosing_timezone)
+    await state.set_state(Onboarding.adding_more_skills)
     await callback.answer()
-
 
 @router.message(Onboarding.entering_custom_skill, ~F.text.startswith("/"))
 async def process_custom_skill(message: Message, state: FSMContext) -> None:
     """Пользователь ввёл свой навык текстом."""
     skill = message.text.strip()[:50]
+    user_id = message.from_user.id
 
     if not skill:
         await message.answer("Напиши название навыка.")
         return
 
-        await state.update_data(skill=skill)
+    result = await add_skill(user_id, skill)
+
+    if result == -2:
+        await message.answer(
+            texts.SKILL_ALREADY_EXISTS,
+            reply_markup=add_more_skills_keyboard(
+                await count_active_skills(user_id), MAX_SKILLS
+            )
+        )
+        return
+
+    if result == -1:
+        await message.answer(
+            texts.MAX_SKILLS_REACHED,
+            reply_markup=add_more_skills_keyboard(MAX_SKILLS, MAX_SKILLS)
+        )
+        return
+
+    skills = await get_active_skills(user_id)
+    skills_list = ", ".join([s["name"] for s in skills])
+
     await message.answer(
-        texts.SKILL_SAVED.format(skill=skill) + "\n\n" + texts.CHOOSE_TIMEZONE,
-        reply_markup=timezone_keyboard()
+        texts.SKILL_ADDED.format(skill=skill, skills_list=skills_list),
+        reply_markup=add_more_skills_keyboard(len(skills), MAX_SKILLS)
     )
-    await state.set_state(Onboarding.choosing_timezone)
+    await state.set_state(Onboarding.adding_more_skills)
 
 
 # ============ НАСТРОЙКА ВРЕМЕНИ ============
@@ -149,11 +233,12 @@ async def process_custom_skill(message: Message, state: FSMContext) -> None:
 async def process_default_time(callback: CallbackQuery, state: FSMContext) -> None:
     """Оставляем время по умолчанию: 9:00 и 20:00."""
     data = await state.get_data()
-    skill = data.get("skill")
     timezone = data.get("timezone", "Europe/Moscow")
 
     user_id = callback.from_user.id
-    await update_user_skill(user_id, skill)
+    skills = await get_active_skills(user_id)
+    if skills:
+        await update_user_skill(user_id, skills[0]["name"])
     await update_user_timezone(user_id, timezone)
     await update_user_time(user_id, morning="09:00", evening="20:00")
 
@@ -198,13 +283,14 @@ async def process_evening_time(message: Message, state: FSMContext) -> None:
         await message.answer(texts.INVALID_TIME)
         return
 
-    data = await state.get_data()
-    skill = data.get("skill")
+        data = await state.get_data()
     morning = data.get("morning_time")
     timezone = data.get("timezone", "Europe/Moscow")
 
     user_id = message.from_user.id
-    await update_user_skill(user_id, skill)
+    skills = await get_active_skills(user_id)
+    if skills:
+        await update_user_skill(user_id, skills[0]["name"])
     await update_user_timezone(user_id, timezone)
     await update_user_time(user_id, morning=morning, evening=time_str)
     await message.answer(
