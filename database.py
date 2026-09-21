@@ -93,29 +93,29 @@ async def init_db() -> None:
 
         await db.commit()
 
-        # Миграция данных: переносим старый users.skill в таблицу skills
-        await _migrate_user_skills(db)
-
-
-async def _migrate_user_skills(db) -> None:
+            # Миграция данных: переносим старый users.skill в таблицу skills
+    # (запускаем ПОСЛЕ закрытия основного соединения)
+    await _migrate_user_skills()
+async def _migrate_user_skills() -> None:
     """Переносит старый users.skill в таблицу skills для существующих пользователей."""
-    async with db.execute("""
-        SELECT u.user_id, u.skill FROM users u
-        WHERE u.skill IS NOT NULL
-        AND NOT EXISTS (SELECT 1 FROM skills s WHERE s.user_id = u.user_id)
-    """) as cursor:
-        rows = await cursor.fetchall()
+    async with aiosqlite.connect(DB_NAME) as db:
+        async with db.execute("""
+            SELECT u.user_id, u.skill FROM users u
+            WHERE u.skill IS NOT NULL
+            AND NOT EXISTS (SELECT 1 FROM skills s WHERE s.user_id = u.user_id)
+        """) as cursor:
+            rows = await cursor.fetchall()
 
-    for user_id, skill_name in rows:
-        await db.execute(
-            "INSERT INTO skills (user_id, name, status) VALUES (?, ?, 'active')",
-            (user_id, skill_name)
-        )
+        for user_id, skill_name in rows:
+            await db.execute(
+                "INSERT INTO skills (user_id, name, status) VALUES (?, ?, 'active')",
+                (user_id, skill_name)
+            )
 
-    if rows:
-        await db.commit()
-        print(f"Миграция: перенесено {len(rows)} навыков пользователей")
-    
+        if rows:
+            await db.commit()
+            print(f"Миграция: перенесено {len(rows)} навыков пользователей")
+
 # ============ ПОЛЬЗОВАТЕЛИ ============
 
 async def add_user(user_id: int, username: str) -> None:
