@@ -156,12 +156,12 @@ async def check_nudges(bot: Bot) -> None:
 
         tz = _get_user_tz(user)
         # Отправляем только в 13:00 по локальному времени
-        if _now_hm(tz) != datetime.now(tz).strftime("%H:%M"):
+        if _now_hm(tz) != "13:00":
             continue
 
         # Проверяем, сколько дней пользователь не выполнял шаги
         days = await days_since_last_activity(user["user_id"])
-        if days == 999:
+        if days < 2 or days == 999:
             continue
 
         
