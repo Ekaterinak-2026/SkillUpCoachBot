@@ -328,3 +328,95 @@ async def days_since_last_activity(user_id: int) -> int:
         return diff
     except Exception:
         return 999
+    # ============ РАБОТА С НАВЫКАМИ ============
+
+MAX_SKILLS = 5
+
+
+async def add_skill(user_id: int, name: str) -> int:
+    """Добавляет новый навык. -1 — превышен лимит, -2 — дубликат."""
+    count = await count_active_skills(user_id)
+    if count >= MAX_SKILLS:
+        return -1
+
+    async with aiosqlite.connect(DB_NAME) as db:
+        async with db.execute(
+            "SELECT id FROM skills WHERE user_id = ? AND LOWER(name) = LOWER(?)",
+            (user_id, name)
+        ) as cursor:
+            if await cursor.fetchone():
+                return -2
+
+        cursor = await db.execute(
+            "INSERT INTO skills (user_id, name, status) VALUES (?, ?, 'active')",
+            (user_id, name)
+        )
+        await db.commit()
+        return cursor.lastrowid
+
+
+async def get_active_skills(user_id: int) -> list[dict]:
+    """Возвращает список активных навыков пользователя."""
+    async with aiosqlite.connect(DB_NAME) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT * FROM skills WHERE user_id = ? AND status = 'active' ORDER BY id",
+            (user_id,)
+        ) as cursor:
+            rows = await cursor.fetchall()
+            return [dict(r) for r in rows]
+
+
+async def get_archived_skills(user_id: int) -> list[dict]:
+    """Возвращает список архивных навыков."""
+    async with aiosqlite.connect(DB_NAME) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT * FROM skills WHERE user_id = ? AND status = 'archived' ORDER BY id",
+            (user_id,)
+        ) as cursor:
+            rows = await cursor.fetchall()
+            return [dict(r) for r in rows]
+
+
+async def get_skill_by_id(skill_id: int) -> dict | None:
+    """Возвращает навык по его id."""
+    async with aiosqlite.connect(DB_NAME) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT * FROM skills WHERE id = ?", (skill_id,)
+        ) as cursor:
+            row = await cursor.fetchone()
+            return dict(row) if row else None
+
+
+async def count_active_skills(user_id: int) -> int:
+    """Возвращает количество активных навыков."""
+    async with aiosqlite.connect(DB_NAME) as db:
+        async with db.execute(
+            "SELECT COUNT(*) FROM skills WHERE user_id = ? AND status = 'active'",
+            (user_id,)
+        ) as cursor:
+            row = await cursor.fetchone()
+            return row[0] if row else 0
+
+
+async def archive_skill(skill_id: int) -> None:
+    """Архивирует навык (мягкое удаление)."""
+    async with aiosqlite.connect(DB_NAME) as db:
+        await db.execute(
+            "UPDATE skills SET status = 'archived', archived_at = CURRENT_TIMESTAMP "
+            "WHERE id = ?",
+            (skill_id,)
+        )
+        await db.commit()
+
+
+async def restore_skill(skill_id: int) -> None:
+    """Восстанавливает навык из архива."""
+    async with aiosqlite.connect(DB_NAME) as db:
+        await db.execute(
+            "UPDATE skills SET status = 'active', archived_at = NULL WHERE id = ?",
+            (skill_id,)
+        )
+        await db.commit()

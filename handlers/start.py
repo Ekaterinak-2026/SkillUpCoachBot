@@ -283,7 +283,7 @@ async def process_evening_time(message: Message, state: FSMContext) -> None:
         await message.answer(texts.INVALID_TIME)
         return
 
-        data = await state.get_data()
+    data = await state.get_data()
     morning = data.get("morning_time")
     timezone = data.get("timezone", "Europe/Moscow")
 
