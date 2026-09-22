@@ -435,3 +435,13 @@ async def get_all_today_plans(user_id: int) -> list[dict]:
     ) as cursor:
         rows = await cursor.fetchall()
         return [dict(r) for r in rows]
+    async def update_step_status_by_skill(user_id: int, skill_id: int, status: str) -> None:
+        """Обновляет статус шага по конкретному навыку за сегодня."""
+    today = datetime.now().strftime("%Y-%m-%d")
+    db = await get_db()
+    await db.execute(
+        "UPDATE daily_steps SET status = ? "
+        "WHERE user_id = ? AND skill_id = ? AND date = ?",
+        (status, user_id, skill_id, today)
+    )
+    await db.commit()
