@@ -46,12 +46,12 @@ def step_type_keyboard(skill_id: int) -> InlineKeyboardMarkup:
 
 # ============ ВЕЧЕРНИЙ ЧЕКАП ============
 
-def evening_check_keyboard() -> InlineKeyboardMarkup:
-    """Кнопки ответа на вечерний вопрос (если план был)."""
+def evening_check_keyboard(skill_id: int) -> InlineKeyboardMarkup:
+    """Кнопки вечернего чекапа по конкретному навыку."""
     builder = InlineKeyboardBuilder()
-    builder.button(text="✅ Да, сделал", callback_data="evening:done")
-    builder.button(text="❌ Нет, не успел", callback_data="evening:failed")
-    builder.button(text="⏳ Перенесу на завтра", callback_data="evening:postponed")
+    builder.button(text="✅ Да, сделал", callback_data=f"es:{skill_id}:done")
+    builder.button(text="❌ Нет, не успел", callback_data=f"es:{skill_id}:failed")
+    builder.button(text="⏳ Перенесу на завтра", callback_data=f"es:{skill_id}:postponed")
     builder.adjust(1)
     return builder.as_markup()
 

@@ -17,6 +17,7 @@ from database import (
     get_today_plan,
     get_all_today_plans,
     update_step_status,
+    update_step_status_by_skill,
     mark_step_done,
     mark_step_failed,
     get_active_skills,
@@ -101,65 +102,79 @@ async def process_morning_step(callback: CallbackQuery, state: FSMContext) -> No
 
 # ============ ВЕЧЕР: ОТВЕТЫ НА ЧЕКАП ============
 
-@router.callback_query(F.data == "evening:done")
-async def process_evening_done(callback: CallbackQuery) -> None:
-    """Пользователь отметил, что сделал шаг."""
+@router.callback_query(F.data.startswith("es:"))
+async def process_evening_step(callback: CallbackQuery, state: FSMContext) -> None:
+    """Обработка вечернего ответа по одному навыку."""
+    parts = callback.data.split(":", 2)
+    if len(parts) != 3:
+        await callback.answer()
+        return
+
+    try:
+        skill_id = int(parts[1])
+    except ValueError:
+        await callback.answer()
+        return
+
+    action = parts[2]  # done / failed / postponed
     user_id = callback.from_user.id
 
-    # Отмечаем шаг выполненным
-    await update_step_status(user_id, "выполнен")
+    # Обновляем статус в БД
+    status_map = {
+        "done": "выполнен",
+        "failed": "пропущен",
+        "postponed": "перенесён",
+    }
+    await update_step_status_by_skill(user_id, skill_id, status_map[action])
 
-    # Обновляем серию и получаем новые данные
-    user = await mark_step_done(user_id)
+    # Сохраняем в FSM
+    data = await state.get_data()
+    answered: dict = data.get("evening_answered", {})
+    answered[str(skill_id)] = action
+    await state.update_data(evening_answered=answered)
 
-    streak = user.get("streak", 0)
-    total = user.get("total_success", 0)
+    # Проверяем: остались ли ещё незавершённые планы?
+    plans = await get_all_today_plans(user_id)
+    pending = [
+        p for p in plans
+        if p["status"] == "запланирован"
+    ]
 
-    # Если серия кратна 5 — добавляем поздравление
-    if streak > 0 and streak % 5 == 0:
-        text = texts.STEP_DONE_STREAK_BONUS.format(streak=streak, total=total)
+    if pending:
+        # Есть ещё — показываем следующий
+        next_plan = pending[0]
+        skill_name = next_plan.get("skill_name") or "навык"
+        text = (
+            "🌙 Пришло время чекапа.\n\n"
+            f"📌 {skill_name} — {next_plan['step_type']}. Получилось?"
+        )
+        await callback.message.edit_text(
+            text,
+            reply_markup=evening_check_keyboard(next_plan["skill_id"])
+        )
     else:
-        text = texts.STEP_DONE.format(streak=streak, total=total)
+        # Все ответы получены — считаем серию
+        user = await get_user(user_id)
+        any_done = any(a == "done" for a in answered.values())
 
-    await callback.message.edit_text(text)
-    await callback.answer()
+        if any_done:
+            user = await mark_step_done(user_id)
+            streak = user.get("streak", 0)
+            total = user.get("total_success", 0)
 
+            if streak > 0 and streak % 5 == 0:
+                text = texts.STEP_DONE_STREAK_BONUS.format(streak=streak, total=total)
+            else:
+                text = texts.STEP_DONE.format(streak=streak, total=total)
+        else:
+            old = await get_user(user_id)
+            old_streak = old.get("streak", 0) if old else 0
+            await mark_step_failed(user_id)
+            text = texts.STEP_FAILED.format(streak=old_streak)
 
-@router.callback_query(F.data == "evening:failed")
-async def process_evening_failed(callback: CallbackQuery) -> None:
-    """Пользователь отметил, что не успел."""
-    user_id = callback.from_user.id
+        await callback.message.edit_text(text)
+        await state.clear()
 
-    # Сохраняем статус
-    await update_step_status(user_id, "пропущен")
-
-    # Запоминаем текущую серию, чтобы показать в сообщении
-    old_user = await get_user(user_id)
-    old_streak = old_user.get("streak", 0) if old_user else 0
-
-    # Сбрасываем серию
-    await mark_step_failed(user_id)
-
-    await callback.message.edit_text(
-        texts.STEP_FAILED.format(streak=old_streak)
-    )
-    await callback.answer()
-
-
-@router.callback_query(F.data == "evening:postponed")
-async def process_evening_postponed(callback: CallbackQuery) -> None:
-    """Пользователь переносит шаг на завтра."""
-    user_id = callback.from_user.id
-
-    # Сохраняем статус
-    await update_step_status(user_id, "перенесён")
-
-    user = await get_user(user_id)
-    streak = user.get("streak", 0) if user else 0
-
-    await callback.message.edit_text(
-        texts.STEP_POSTPONED.format(streak=streak)
-    )
     await callback.answer()
 
 

@@ -18,6 +18,7 @@ from database import (
     get_week_stats,
     days_since_last_activity,
     get_active_skills,
+    get_all_today_plans,
 )
 from keyboards import (
     step_type_keyboard,
@@ -87,7 +88,7 @@ async def check_morning(bot: Bot) -> None:
 # ============ ВЕЧЕРНИЕ НАПОМИНАНИЯ ============
 
 async def check_evening(bot: Bot) -> None:
-    """Отправляет вечерний чекап тем, у кого наступило время."""
+    """Отправляет вечерний чекап по каждому навыку."""
     users = await get_all_users()
     for user in users:
         if not user.get("skill"):
@@ -96,25 +97,29 @@ async def check_evening(bot: Bot) -> None:
         if _now_hm(tz) != user.get("evening_time"):
             continue
 
-        plan = await get_today_plan(user["user_id"])
+        # Получаем планы на сегодня
+        plans = await get_all_today_plans(user["user_id"])
+        # Фильтруем только «запланированные» (не завершённые)
+        pending = [p for p in plans if p["status"] == "запланирован"]
+
+        if not pending:
+            continue
+
+        first = pending[0]
+        skill_name = first.get("skill_name") or user["skill"]
+        text = (
+            "🌙 Пришло время чекапа.\n\n"
+            f"📌 {skill_name} — {first['step_type']}. Получилось?"
+        )
         try:
-            if plan:
-                await bot.send_message(
-                    user["user_id"],
-                    texts.EVENING_CHECK.format(
-                        step_type=plan["step_type"],
-                        skill=user["skill"]
-                    ),
-                    reply_markup=evening_check_keyboard()
-                )
-            else:
-                await bot.send_message(
-                    user["user_id"],
-                    texts.EVENING_NO_PLAN.format(skill=user["skill"]),
-                    reply_markup=evening_no_plan_keyboard()
-                )
+            await bot.send_message(
+                user["user_id"],
+                text,
+                reply_markup=evening_check_keyboard(first["skill_id"])
+            )
         except Exception as e:
             print(f"Ошибка вечернего сообщения {user['user_id']}: {e}")
+       
 
 
 # ============ ЕЖЕНЕДЕЛЬНЫЙ ДАЙДЖЕСТ ============
